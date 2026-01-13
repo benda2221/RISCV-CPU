@@ -13,10 +13,8 @@ object Main extends App {
         "-o=verilog/",
         "-split-verilog",
 )
-    val isSim = Option(System.getenv("BUILD_MODE")).getOrElse("SYNC") != "SYNC"
-    println(s"isSim: $isSim")
     ChiselStage.emitSystemVerilogFile(
-        new CPU(isSim),
+        new CPU,
         Array("-td", "build/"),
         firtoolOpts = firtoolOptions,
     )
