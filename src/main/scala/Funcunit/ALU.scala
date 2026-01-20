@@ -1,8 +1,9 @@
 import chisel3._
 import chisel3.util._
 import ZirconConfig.EXEOp._
+import ZirconUtil.ZirconUtil.{Reverse => ZirconReverse, Log2Rev, SE, ZE}
 import Shifter._
-
+import Adder._
 
 class ALUIO extends Bundle {
     val src1 = Input(UInt(32.W))
@@ -25,7 +26,7 @@ class ALU extends Module {
     val adderCout = adder.io.cout
 
     // shifter
-    val sfterSrc = Mux(io.op === SLL, Reverse(io.src1), io.src1)
+    val sfterSrc = Mux(io.op === SLL, ZirconReverse(io.src1), io.src1)
     val sfterShf = io.src2(4, 0)
     val sfterSgn = io.op === SRA
 
@@ -63,7 +64,7 @@ class ALU extends Module {
             io.res := io.src1 ^ io.src2
         }
         is(SLL){
-            io.res := Reverse(shifter.io.res)
+            io.res := ZirconReverse(shifter.io.res)
         }
         is(SRL){
             io.res := sfterRes

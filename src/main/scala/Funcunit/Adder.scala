@@ -156,4 +156,26 @@ object BLevelPAdder64{
         adder
     }
 }
+
+// Wrapper object to allow importing adder functions
+// Create aliases to avoid name conflicts when calling objects in the same file
+private object AdderImpl {
+    val BLevelPAdder32Obj = BLevelPAdder32
+    val BLevelPAdder33Obj = BLevelPAdder33
+    val BLevelPAdder64Obj = BLevelPAdder64
+}
+
+object Adder {
+    // Re-export adder apply functions by calling the objects in this file
+    def BLevelPAdder32(src1: UInt, src2: UInt, cin: UInt): BLevelPAdder32 = {
+        AdderImpl.BLevelPAdder32Obj.apply(src1, src2, cin)
+    }
+    def BLevelPAdder33(src1: UInt, src2: UInt, cin: UInt): BLevelPAdder33 = {
+        AdderImpl.BLevelPAdder33Obj.apply(src1, src2, cin)
+    }
+    def BLevelPAdder64(src1: UInt, src2: UInt, cin: UInt): BLevelPAdder64 = {
+        AdderImpl.BLevelPAdder64Obj.apply(src1, src2, cin)
+    }
+}
+    
     

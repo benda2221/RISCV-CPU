@@ -82,7 +82,23 @@ class Decoder extends Module {
         }
         // arithmetic reg
         is(0x33.U){
-            instPkg.op := Mux(funct3 === 0x5.U, funct7(5), 0.U) ## funct3
+            // Check if it's a multiply/divide operation (funct7[0] = 1)
+            when(funct7(0) === 1.U){
+                // Multiply or divide operations
+                when(funct3(2) === 1.U){
+                    // Division/remainder operations (funct3 = 4, 5, 6, 7)
+                    // DIV=0x4, DIVU=0x5, REM=0x6, REMU=0x7
+                    instPkg.op := funct3  // 4-bit op for SRT2
+                }.otherwise{
+                    // Multiply operations (funct3 = 0, 1, 2, 3)
+                    // MUL=0x0, MULH=0x1, MULHSU=0x2, MULHU=0x3
+                    instPkg.op := funct3  // 4-bit op for Multiply
+                }
+            }.otherwise{
+                // Standard ALU operations
+                // For SLL/SRL/SRA (funct3=1/5), use funct7[5] to distinguish SRL(0) from SRA(1)
+                instPkg.op := Mux(funct3 === 0x5.U, funct7(5), 0.U) ## funct3
+            }
             instPkg.aluSrc1 := 2.U // choose rs1
             instPkg.aluSrc2 := 2.U // choose rs2
         }

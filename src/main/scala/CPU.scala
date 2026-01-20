@@ -18,13 +18,18 @@ class CPU extends Module {
     val regfile = Module(new RegisterFile())
     val alu = Module(new ALU())
     val branch = Module(new Branch())
+    val srt2 = Module(new SRT2())
+    val multiply = Module(new MulBooth2Wallce())
     val bypass = Module(new Bypass())
     val hazard = Module(new Hazard())
 
+    // SRT2 busy stall signal (defined at module level)
+    val srt2BusyStall = WireDefault(false.B)
+
     /* fetch stage */
-    pc.io.jumpEn    := branch.io.jumpEn
+    pc.io.jumpEn    := branch.io.realJp
     pc.io.jumpTgt   := branch.io.jumpTgt
-    pc.io.stall     := hazard.io.hazardEn
+    pc.io.stall     := hazard.io.hazardEn || srt2BusyStall
     io.iAddr        := pc.io.pc
 
     val instPkgIF   = WireDefault(0.U.asTypeOf(new InstructionPackage()))
@@ -34,7 +39,7 @@ class CPU extends Module {
 
     /* decode stage */
     val instPkgIDIn = ShiftRegister(
-        Mux(branch.io.jumpEn, 0.U.asTypeOf(new InstructionPackage()), instPkgIF), 1, 0.U.asTypeOf(new InstructionPackage()), !hazard.io.hazardEn || branch.io.jumpEn
+        Mux(branch.io.realJp, 0.U.asTypeOf(new InstructionPackage()), instPkgIF), 1, 0.U.asTypeOf(new InstructionPackage()), !hazard.io.hazardEn || branch.io.realJp
     )
 
     decoder.io.inst := instPkgIF.inst
@@ -52,20 +57,57 @@ class CPU extends Module {
 
     /* execute stage */
     val instPkgEXIn = ShiftRegister(
-        Mux(hazard.io.hazardEn || branch.io.jumpEn, 0.U.asTypeOf(new InstructionPackage()), instPkgIDOut), 1, 0.U.asTypeOf(new InstructionPackage()), !hazard.io.hazardEn || branch.io.jumpEn
+        Mux(hazard.io.hazardEn || branch.io.realJp, 0.U.asTypeOf(new InstructionPackage()), instPkgIDOut), 1, 0.U.asTypeOf(new InstructionPackage()), !hazard.io.hazardEn || branch.io.realJp
     )
-    alu.io.src1 := Mux1H(instPkgEXIn.aluSrc1, VecInit(instPkgEXIn.pc, Mux(bypass.io.src1BypassEn, bypass.io.src1BypassData, instPkgEXIn.rs1Data), 0.U))
-    alu.io.src2 := Mux1H(instPkgEXIn.aluSrc2, VecInit(instPkgEXIn.imm, Mux(bypass.io.src2BypassEn, bypass.io.src2BypassData, instPkgEXIn.rs2Data), 4.U))
-    alu.io.op    := instPkgEXIn.op(3, 0)
+    
+    // ALU connections
+    val aluSrc1 = Mux1H(instPkgEXIn.aluSrc1, VecInit(instPkgEXIn.pc, Mux(bypass.io.src1BypassEn, bypass.io.src1BypassData, instPkgEXIn.rs1Data), 0.U))
+    val aluSrc2 = Mux1H(instPkgEXIn.aluSrc2, VecInit(instPkgEXIn.imm, Mux(bypass.io.src2BypassEn, bypass.io.src2BypassData, instPkgEXIn.rs2Data), 4.U))
+    alu.io.src1 := aluSrc1
+    alu.io.src2 := aluSrc2
+    alu.io.op   := instPkgEXIn.op(4, 0)  // Changed from 3,0 to 4,0 for 5-bit op
 
+    // Branch connections
     branch.io.src1 := Mux(bypass.io.src1BypassEn, bypass.io.src1BypassData, instPkgEXIn.rs1Data)
     branch.io.src2 := Mux(bypass.io.src2BypassEn, bypass.io.src2BypassData, instPkgEXIn.rs2Data)
     branch.io.op    := instPkgEXIn.op(4, 0)
     branch.io.pc    := instPkgEXIn.pc
     branch.io.imm   := instPkgEXIn.imm
+    branch.io.predOffset := instPkgEXIn.pc + 4.U  // Simple prediction: next instruction
+
+    // Determine operation type
+    // From Decoder: 
+    // - Standard ALU: op = funct7[5] ## funct3 (5-bit, op(4) may be 0 or 1)
+    // - Multiply: op = funct3 (4-bit, op(3,0) = 0-3, op(4) = 0, op(2) = 0)
+    // - Division: op = funct3 (4-bit, op(3,0) = 4-7, op(4) = 0, op(2) = 1)
+    // We can distinguish by checking op(4) and op(3,0) range
+    // Multiplication: op(4) = 0, op(3,0) < 4, op(2) = 0
+    // Division: op(4) = 0, op(3,0) >= 4, op(2) = 1
+    // Standard ALU: op(4) may be 1, or op(3,0) matches standard ALU patterns
+    val isMulOp = !instPkgEXIn.op(4) && !instPkgEXIn.op(2) && instPkgEXIn.op(3, 0) < 4.U
+    val isDivOp = !instPkgEXIn.op(4) && instPkgEXIn.op(2) && instPkgEXIn.op(3, 0) >= 4.U
+    
+    // SRT2 connections (for division/remainder operations)
+    srt2.io.src1 := aluSrc1
+    srt2.io.src2 := aluSrc2
+    srt2.io.op   := instPkgEXIn.op(3, 0)  // 4-bit op for SRT2
+    
+    // Multiply connections (for multiplication operations)
+    multiply.io.src1 := aluSrc1
+    multiply.io.src2 := aluSrc2
+    multiply.io.op   := instPkgEXIn.op(3, 0)  // 4-bit op for Multiply
+    multiply.io.divBusy := srt2.io.busy  // Stall multiply when division is busy
+    
+    // Stall pipeline when SRT2 is busy with a div/rem operation
+    srt2BusyStall := isDivOp && srt2.io.busy
 
     val instPkgEXOut = WireDefault(instPkgEXIn)
-    instPkgEXOut.aluResult := alu.io.result
+    // Select result from ALU, Multiply, or SRT2 based on operation type
+    instPkgEXOut.aluResult := Mux1H(Seq(
+        (isMulOp, multiply.io.res),
+        (isDivOp && srt2.io.ready, srt2.io.res),
+        (true.B, alu.io.res)  // Default to ALU result
+    ))
     instPkgEXOut.rs2Data   := Mux(bypass.io.src2BypassEn, bypass.io.src2BypassData, instPkgEXIn.rs2Data)
 
     /* memory stage */

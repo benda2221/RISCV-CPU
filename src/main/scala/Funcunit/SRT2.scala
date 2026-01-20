@@ -1,7 +1,8 @@
 import chisel3._
 import chisel3.util._
-import ZirconUtil._
+import ZirconUtil.ZirconUtil.{Reverse => ZirconReverse, Log2Rev, SE, ZE}
 import ZirconConfig.EXEOp._
+import Adder._
 
 class SRT2IO extends Bundle {
     val src1  = Input(UInt(32.W))
@@ -51,7 +52,7 @@ class SRT2 extends Module {
 
 
     def countLeadingZeros(x: UInt): UInt = {
-        Log2Rev(Reverse(x))(4, 0)
+        Log2Rev(ZirconReverse(x))(4, 0)
     }
 
     val src1LeadingZeros = countLeadingZeros(src1AbsS2)

@@ -2,7 +2,9 @@
 import chisel3._
 import chisel3.util._
 import ZirconConfig.EXEOp._
-import ZirconUtil._
+import ZirconUtil.ZirconUtil.{Reverse => ZirconReverse, Log2Rev, SE, ZE}
+import Adder._
+
 class MultiplyIO extends Bundle {
     val src1    = Input(UInt(32.W))
     val src2    = Input(UInt(32.W))
@@ -162,4 +164,3 @@ object WallceTree17Cin15{
         wallce
     }
 }
-// }
