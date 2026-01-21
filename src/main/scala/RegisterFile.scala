@@ -9,16 +9,20 @@ class RegisterFileIO extends Bundle {
     val rdData  = Input(UInt(32.W))
     val rs1Data = Output(UInt(32.W))
     val rs2Data = Output(UInt(32.W))
+    val dbg_rf  = Output(Vec(32, UInt(32.W)))  // Debug interface: expose all registers
 }
 
 class RegisterFile extends Module {
     val io = IO(new RegisterFileIO())
 
-    val regs = RegInit(VecInit.fill(32)(0.U(32.W)))
+    val regs = RegInit(VecInit.fill(32)(0.U(32.W)))  // Register file storage
 
     when(io.rdVld){
         regs(io.rd) := io.rdData
     }
     io.rs1Data := Mux(io.rs1 === io.rd && io.rdVld, io.rdData, regs(io.rs1))
     io.rs2Data := Mux(io.rs2 === io.rd && io.rdVld, io.rdData, regs(io.rs2))
+    
+    // Debug interface: expose all registers
+    io.dbg_rf := regs
 }

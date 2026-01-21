@@ -8,6 +8,11 @@ class CPUIO extends Bundle {
     val dWdata  = Output(UInt(32.W))
     val dWstrb  = Output(UInt(4.W))
     val dRdata  = Input(UInt(32.W))
+    
+    // Debug interface for emulator
+    val dbg_wb_valid = Output(Bool())      // Write-back stage valid signal
+    val dbg_wb_pc    = Output(UInt(32.W))  // Write-back stage PC
+    val dbg_rf       = Output(Vec(32, UInt(32.W)))  // Register file for debug access
 }
 
 class CPU extends Module {
@@ -145,6 +150,10 @@ class CPU extends Module {
     val instPkgWBOut = WireDefault(instPkgWBIn)
     instPkgWBOut.aluResult := Mux(instPkgWBIn.op(5), instPkgWBIn.memResult, instPkgWBIn.aluResult)
 
+    // Debug interface connections
+    io.dbg_wb_valid := instPkgWBIn.vld  // Write-back stage valid signal
+    io.dbg_wb_pc    := instPkgWBIn.pc   // Write-back stage PC
+    io.dbg_rf       := regfile.io.dbg_rf  // Register file for debug access
 
     // bypass
     bypass.io.instPkgEX := instPkgEXIn
